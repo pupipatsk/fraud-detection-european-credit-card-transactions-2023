@@ -54,9 +54,7 @@ class Config:
 
     @classmethod
     def apply_plot_config(cls) -> None:
-        """
-        Applies the matplotlib configuration settings.
-        """
+        """Applies the matplotlib configuration settings."""
         plt.rcParams.update(cls.PLOT_CONFIG)
 
 
