@@ -1,0 +1,957 @@
+# config.py
+"""
+config.py
+
+This module contains configuration settings for reproducibility and visualization customization.
+"""
+
+import matplotlib.pyplot as plt
+from typing import Dict
+
+
+class Config:
+    """Configuration class"""
+
+    SEED: int = 42
+
+    PLOT_CONFIG: Dict[str, object] = {
+        # Axes
+        "axes.titlesize": 16,
+        "axes.titlepad": 20,
+        "axes.labelsize": 12,
+        "axes.edgecolor": (0.1, 0.1, 0.1),
+        "axes.labelcolor": (0.1, 0.1, 0.1),
+        "axes.linewidth": 1,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.spines.bottom": True,
+        "axes.spines.left": True,
+        "axes.grid": True,
+        # Grid
+        "grid.alpha": 0.7,
+        "grid.linestyle": "--",
+        "grid.linewidth": 0.6,
+        # Lines
+        "lines.linewidth": 1.5,
+        "lines.markeredgewidth": 0.0,
+        # Scatter plot
+        "scatter.marker": "x",
+        # Ticks
+        "xtick.labelsize": 12,
+        "xtick.color": (0.1, 0.1, 0.1),
+        "xtick.direction": "in",
+        "ytick.labelsize": 12,
+        "ytick.color": (0.1, 0.1, 0.1),
+        "ytick.direction": "in",
+        # Figure output
+        "figure.figsize": (10, 6),
+        "figure.dpi": 200,
+        "savefig.dpi": 200,
+        # Text
+        "text.color": (0.2, 0.2, 0.2),
+        # Font
+        "font.family": ["serif", "Tahoma"],  # TH Font
+    }
+
+    @classmethod
+    def apply_plot_config(cls) -> None:
+        """Applies the matplotlib configuration settings."""
+        plt.rcParams.update(cls.PLOT_CONFIG)
+
+
+Config.apply_plot_config()
+
+
+# __init__.py
+from .data import dataloader, data_processor
+from .models import (
+    base_model,
+    logistic_regression_model,
+    multi_trainer,
+    single_trainer,
+    xgboost_model,
+)
+
+
+# csv_to_parquet.py
+import os
+import pyarrow
+import pyarrow.csv as pv
+import pyarrow.parquet as pq
+
+
+def csv_to_parquet_pyarrow(csv_file_path: str, parquet_file_path: str) -> None:
+    """
+    Converts a CSV file to a Parquet file using PyArrow.
+
+    Args:
+        csv_file_path (str): Path to the input CSV file.
+        parquet_file_path (str): Path to the output Parquet file.
+
+    Returns:
+        None: Saves the Parquet file to the specified path.
+
+    Raises:
+        FileNotFoundError: If the input CSV file does not exist.
+        OSError: If there's an issue creating the output directory.
+        pyarrow.lib.ArrowException: If an error occurs during conversion.
+    """
+    if not os.path.exists(csv_file_path):
+        raise FileNotFoundError(f"CSV file not found: {csv_file_path}")
+
+    # Ensure output directory exists
+    output_dir = os.path.dirname(parquet_file_path)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+
+    try:
+        # Read CSV into a PyArrow Table
+        table = pv.read_csv(csv_file_path)
+
+        # Write the Table to a Parquet file
+        pq.write_table(table, parquet_file_path)
+
+        print(f"Successfully converted '{csv_file_path}' to '{parquet_file_path}'.")
+    except (OSError, pyarrow.lib.ArrowException) as e:
+        print(f"An error occurred while converting CSV to Parquet: {e}")
+        raise
+
+
+if __name__ == "__main__":
+    csv_file_path = "path/to/input.csv"
+    parquet_file_path = "path/to/output.parquet"
+    csv_to_parquet_pyarrow(csv_file_path, parquet_file_path)
+
+
+# __init__.py
+from .base_model import BaseModel
+from .logistic_regression_model import LogisticRegressionModel
+from .multi_trainer import MultiTrainer
+from .single_trainer import SingleTrainer
+from .xgboost_model import XGBoostModel
+
+
+# logistic_regression_model.py
+from typing import Optional, Dict, Any
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from src.config import Config
+from src.models.base_model import BaseModel
+
+
+class LogisticRegressionModel(BaseModel):
+    """
+    A Logistic Regression model wrapper extending BaseModel.
+
+    Attributes:
+        model (LogisticRegression): The logistic regression model instance.
+        base_params (Dict[str, Any]): Default model parameters.
+        learnable_params (Dict[str, Dict[str, Any]]): Parameter space for hyperparameter tuning.
+        params (Dict[str, Any]): Final set of parameters used for training.
+    """
+
+    def __init__(self, random_state: Optional[int] = None):
+        """
+        Initializes the LogisticRegressionModel class with default parameters.
+
+        Args:
+            random_state (Optional[int], optional): Random seed for model reproducibility.
+                Defaults to `Config.SEED` if not provided.
+        """
+        super().__init__()
+
+        # Ensure Config.SEED is available before using it
+        if random_state is None:
+            random_state = getattr(
+                Config, "SEED", 42
+            )  # Default to 42 if Config.SEED is not found
+
+        self.model = LogisticRegression(random_state=random_state)
+        self.base_params: Dict[str, Any] = {"random_state": random_state}
+        self.learnable_params: Dict[str, Dict[str, Any]] = {
+            "C": {
+                "type": "loguniform",
+                "low": 0.01,
+                "high": 10,
+            }  # Regularization strength
+        }
+        self.params: Dict[str, Any] = self.base_params.copy()
+
+    def fit(self, X: np.ndarray, y: np.ndarray) -> None:
+        """
+        Fits the logistic regression model to the training data.
+
+        Args:
+            X (np.ndarray): Feature matrix of shape (n_samples, n_features).
+            y (np.ndarray): Target labels of shape (n_samples,).
+
+        Raises:
+            ValueError: If `X` or `y` are not provided correctly.
+        """
+        if X is None or y is None:
+            raise ValueError("Training data (X, y) cannot be None.")
+
+        self.model.set_params(**self.params)
+        self.model.fit(X, y)
+
+
+# base_model.py
+from typing import Dict, Optional, Any
+import numpy as np
+import pandas as pd
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
+
+
+class BaseModel:
+    """
+    A base class for machine learning models that provides fit, predict, and evaluation functionalities.
+
+    Attributes:
+        model (Optional[Any]): The machine learning model instance.
+        params (Dict[str, Any]): Model hyperparameters.
+        metrics (Dict[str, callable]): Dictionary of evaluation metrics.
+    """
+
+    def __init__(self):
+        """
+        Initializes the BaseModel class with default attributes.
+        """
+        self.model: Optional[Any] = None
+        self.params: Dict[str, Any] = {}
+        self.metrics: Dict[str, callable] = {
+            "precision": precision_score,
+            "recall": recall_score,
+            "f1": f1_score,
+            "accuracy": accuracy_score,
+            "roc_auc": roc_auc_score,
+        }  # {metric_name: metric_function}
+
+    def fit(self, X: np.ndarray, y: np.ndarray) -> None:
+        """
+        Fits the model to the training data.
+
+        Args:
+            X (np.ndarray): Feature matrix of shape (n_samples, n_features).
+            y (np.ndarray): Target vector of shape (n_samples,).
+
+        Raises:
+            ValueError: If the model has not been initialized.
+        """
+        if self.model is None:
+            raise ValueError(
+                "Model has not been initialized. Please assign a valid model to `self.model`."
+            )
+
+        self.model.fit(X, y)
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """
+        Generates predictions using the trained model.
+
+        Args:
+            X (np.ndarray): Feature matrix of shape (n_samples, n_features).
+
+        Returns:
+            np.ndarray: Predicted labels of shape (n_samples,).
+
+        Raises:
+            ValueError: If the model has not been initialized.
+        """
+        if self.model is None:
+            raise ValueError(
+                "Model has not been initialized. Please assign a valid model to `self.model`."
+            )
+
+        return self.model.predict(X)
+
+    def evaluate(self, X: np.ndarray, y: np.ndarray) -> Dict[str, Optional[float]]:
+        """
+        Evaluates the model on a given dataset using predefined metrics.
+
+        Args:
+            X (np.ndarray): Feature matrix of shape (n_samples, n_features).
+            y (np.ndarray): True target labels of shape (n_samples,).
+
+        Returns:
+            Dict[str, Optional[float]]: A dictionary containing evaluation metric names as keys and their computed values as values.
+                                        Returns `None` for metrics that could not be computed.
+
+        Raises:
+            ValueError: If the model has not been initialized.
+        """
+        if self.model is None:
+            raise ValueError(
+                "Model has not been initialized. Please assign a valid model to `self.model`."
+            )
+
+        y_pred = self.predict(X)
+        results: Dict[str, Optional[float]] = {}
+
+        for metric_name, metric_fn in self.metrics.items():
+            try:
+                if metric_name == "roc_auc":
+                    if hasattr(self.model, "predict_proba"):
+                        y_prob = self.model.predict_proba(X)[
+                            :, 1
+                        ]  # Get probabilities for the positive class (1)
+                        results[metric_name] = metric_fn(y, y_prob)
+                    else:
+                        results[metric_name] = (
+                            None  # Model does not support probability estimates
+                        )
+                else:
+                    results[metric_name] = metric_fn(y, y_pred)
+            except ValueError as e:
+                print(f"Warning: Could not compute {metric_name} due to error: {e}")
+                results[metric_name] = None
+
+        return results
+
+
+# single_trainer.py
+from typing import Dict, Any, List
+import pandas as pd
+import numpy as np
+import optuna
+from sklearn.model_selection import StratifiedKFold
+from src.models.base_model import BaseModel
+from src.config import Config
+
+
+class SingleTrainer:
+    """
+    A class for training and hyperparameter tuning of a single machine learning model.
+
+    Attributes:
+        model (BaseModel): An instance of a machine learning model.
+        target (str): The target variable name.
+        main_metric (str): The main evaluation metric for model performance.
+    """
+
+    def __init__(self, model: BaseModel, main_metric: str):
+        """
+        Initializes the SingleTrainer class.
+
+        Args:
+            model (BaseModel): The machine learning model to be trained.
+            main_metric (str): The primary metric to optimize during training.
+        """
+        self.model = model  # Custom model instance (e.g., LogisticRegressionModel)
+        self.target: str = ""
+        self.main_metric: str = main_metric
+
+    def train(
+        self, df_train: pd.DataFrame, target: str, tune_params: bool = False
+    ) -> None:
+        """
+        Trains the model using the given dataset.
+
+        Args:
+            df_train (pd.DataFrame): The training dataset.
+            target (str): The name of the target variable.
+            tune_params (bool, optional): If True, performs hyperparameter tuning before training. Defaults to False.
+
+        Raises:
+            ValueError: If the target column is missing in df_train.
+        """
+        if target not in df_train.columns:
+            raise ValueError(f"Target column '{target}' not found in the dataset.")
+
+        self.target = target
+        X = df_train.drop(columns=[self.target]).values
+        y = df_train[self.target].values
+
+        if tune_params:
+            best_params = self.tune_hyperparameters(df_train)
+            self.model.model.set_params(**best_params)
+
+        self.model.fit(X, y)
+
+    def _retrieve_search_space(
+        self, model: BaseModel, trial: optuna.Trial
+    ) -> Dict[str, Any]:
+        """
+        Retrieves and suggests hyperparameter search space for Optuna tuning.
+
+        Args:
+            model (BaseModel): The machine learning model.
+            trial (optuna.Trial): The Optuna trial object.
+
+        Returns:
+            Dict[str, Any]: Suggested hyperparameters.
+        """
+        trial_params = {}
+        for param, search_space in model.learnable_params.items():
+            if search_space["type"] == "int":
+                trial_params[param] = trial.suggest_int(
+                    param, search_space["low"], search_space["high"]
+                )
+            elif search_space["type"] == "loguniform":
+                trial_params[param] = trial.suggest_loguniform(
+                    param, search_space["low"], search_space["high"]
+                )
+        return trial_params
+
+    def _cross_validate(
+        self, X: np.ndarray, y: np.ndarray, params: Dict[str, Any]
+    ) -> List[float]:
+        """
+        Performs cross-validation and returns fold scores.
+
+        Args:
+            X (np.ndarray): Feature matrix of shape (n_samples, n_features).
+            y (np.ndarray): Target labels of shape (n_samples,).
+            params (Dict[str, Any]): Hyperparameters to be used for training.
+
+        Returns:
+            List[float]: A list of scores for each fold.
+        """
+        n_splits = 5
+        cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=Config.SEED)
+        fold_scores = []
+
+        for train_index, val_index in cv.split(X, y):
+            x_tr, x_val = X[train_index], X[val_index]
+            y_tr, y_val = y[train_index], y[val_index]
+
+            model = type(self.model)()  # Re-instantiate model
+            if hasattr(model, "model") and model.model is not None:
+                model.model.set_params(**params)
+                model.fit(x_tr, y_tr)
+                score = model.evaluate(x_val, y_val).get(self.main_metric, None)
+                if score is not None:
+                    fold_scores.append(score)
+
+        return fold_scores
+
+    def objective(self, trial: optuna.Trial, df_train: pd.DataFrame) -> float:
+        """
+        Optuna objective function for hyperparameter tuning.
+
+        Args:
+            trial (optuna.Trial): The Optuna trial object.
+            df_train (pd.DataFrame): The dataset used for tuning.
+
+        Returns:
+            float: The mean cross-validation score.
+        """
+        trial_params = self._retrieve_search_space(self.model, trial)
+        X = df_train.drop(columns=[self.target]).values
+        y = df_train[self.target].values
+        fold_scores = self._cross_validate(X, y, trial_params)
+        return np.mean(fold_scores) if fold_scores else float("-inf")
+
+    def tune_hyperparameters(
+        self, df_train: pd.DataFrame, n_trials: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Optimizes hyperparameters using Optuna.
+
+        Args:
+            df_train (pd.DataFrame): The dataset used for tuning.
+            n_trials (int, optional): Number of trials for hyperparameter tuning. Defaults to 3.
+
+        Returns:
+            Dict[str, Any]: The best hyperparameters found.
+        """
+        study = optuna.create_study(direction="maximize")
+        study.optimize(lambda trial: self.objective(trial, df_train), n_trials=n_trials)
+
+        best_params = study.best_params
+        print(f"Best parameters found: {best_params}")  # Logging the best params
+        return best_params
+
+
+# multi_trainer.py
+from typing import Dict, Optional
+import os
+import time
+import joblib
+import pandas as pd
+from .base_model import BaseModel
+from .single_trainer import SingleTrainer
+
+
+class MultiTrainer:
+    """
+    A class for training and evaluating multiple models on a given dataset.
+
+    Attributes:
+        df_train (pd.DataFrame): Training dataset.
+        df_test (pd.DataFrame): Test dataset.
+        target (str): Target variable name.
+        models (Dict[str, BaseModel]): Dictionary of models to train.
+        main_metric (str): Metric used for model evaluation.
+        verbose (bool): Whether to print progress messages.
+        output_dir (Optional[str]): Directory to save trained models.
+    """
+
+    def __init__(
+        self,
+        df_train: pd.DataFrame,
+        df_test: pd.DataFrame,
+        target: str,
+        models: Dict[str, BaseModel],
+        main_metric: str,
+        verbose: bool = True,
+        output_dir: Optional[str] = None,
+    ):
+        """
+        Initializes the MultiTrainer class.
+
+        Args:
+            df_train (pd.DataFrame): Training dataset.
+            df_test (pd.DataFrame): Test dataset.
+            target (str): Target variable for prediction.
+            models (Dict[str, BaseModel]): Dictionary of models to train.
+            main_metric (str): The primary metric used for model evaluation.
+            verbose (bool, optional): Whether to print progress messages. Defaults to True.
+            output_dir (Optional[str], optional): Directory to save trained models. Defaults to None.
+        """
+        self.df_train = df_train
+        self.df_test = df_test
+        self.target = target
+        self.models: Dict[str, BaseModel] = models  # {model_name: model_instance}
+        self.trained_models: Dict[str, BaseModel] = {}
+        self.main_metric = main_metric
+        self.verbose = verbose
+        self.output_dir = output_dir
+
+    @staticmethod
+    def _save_model(
+        model: BaseModel,
+        output_dir: str,
+        file_format: str = "pkl",
+        verbose: bool = True,
+    ) -> None:
+        """
+        Saves a trained model to a specified directory.
+
+        Args:
+            model (BaseModel): The trained model instance.
+            output_dir (str): Directory where the model will be saved.
+            file_format (str, optional): Format for saving the model. Defaults to "pkl".
+            verbose (bool, optional): Whether to print save location. Defaults to True.
+        """
+        if output_dir is None:
+            raise ValueError("output_dir cannot be None when saving models.")
+
+        time_now = time.strftime("%Y-%m-%d-%H%M")
+        model_name = model.__class__.__name__
+        file_name = f"{time_now}-{model_name}"
+
+        os.makedirs(output_dir, exist_ok=True)  # Ensure directory exists
+        file_path = os.path.join(output_dir, f"{file_name}.{file_format}")
+
+        joblib.dump(model, file_path)
+        if verbose:
+            print(f"Model saved to {file_path}")
+
+    def train_all_models(self, tune_params: bool = False) -> None:
+        """
+        Trains all models and optionally tunes hyperparameters.
+
+        Args:
+            tune_params (bool, optional): If True, tunes model hyperparameters. Defaults to False.
+        """
+        for model_name, model in self.models.items():
+            if self.verbose:
+                print(f"Training {model_name}...")
+                start_time = time.time()
+
+            single_trainer = SingleTrainer(model, self.main_metric)
+            single_trainer.train(self.df_train, self.target, tune_params)
+            self.trained_models[model_name] = single_trainer.model
+
+            # Save model if output_dir is specified
+            if self.output_dir:
+                self._save_model(
+                    single_trainer.model, self.output_dir, verbose=self.verbose
+                )
+
+            if self.verbose:
+                elapsed_time = time.time() - start_time
+                print(f"Training time {model_name}: {elapsed_time:.2f} seconds.")
+
+    def evaluate_all_models(self) -> Dict[str, Dict[str, Dict[str, float]]]:
+        """
+        Evaluates all trained models on both train and test datasets.
+
+        Returns:
+            Dict[str, Dict[str, Dict[str, float]]]:
+                A dictionary containing evaluation results in the format:
+                {
+                    "train": {model_name: {metric_name: value, ...}, ...},
+                    "test": {model_name: {metric_name: value, ...}, ...}
+                }
+        """
+        results: Dict[str, Dict[str, Dict[str, float]]] = {"train": {}, "test": {}}
+
+        for dataset_name, df in [("train", self.df_train), ("test", self.df_test)]:
+            X = df.drop(columns=[self.target])
+            y = df[self.target]
+
+            for model_name, model in self.trained_models.items():
+                res = model.evaluate(X, y)
+                score = res.get(self.main_metric)  # Avoids KeyError
+
+                results[dataset_name][model_name] = res
+                if self.verbose:
+                    score_display = (
+                        f"{score:.4f}" if score is not None else "Metric not available"
+                    )
+                    print(
+                        f"{dataset_name.upper()} | {model_name} {self.main_metric}: {score_display}"
+                    )
+
+        return results
+
+
+# xgboost_model.py
+from typing import Optional, Dict, Any
+import numpy as np
+import pandas as pd
+import xgboost as xgb
+from src.models.base_model import BaseModel
+from src.config import Config
+
+
+class XGBoostModel(BaseModel):
+    """
+    A wrapper for XGBoost's XGBClassifier extending BaseModel.
+
+    Attributes:
+        model (xgb.XGBClassifier): The XGBoost classifier model.
+        base_params (Dict[str, Any]): Default model parameters.
+        learnable_params (Dict[str, Dict[str, Any]]): Hyperparameter search space for tuning.
+        params (Dict[str, Any]): Final set of parameters used for training.
+    """
+
+    def __init__(self, random_state: Optional[int] = None):
+        """
+        Initializes the XGBoostModel with default parameters.
+
+        Args:
+            random_state (Optional[int], optional): Random seed for reproducibility.
+                Defaults to `Config.SEED` if not provided.
+        """
+        super().__init__()
+
+        # Ensure Config.SEED is available before using it
+        if random_state is None:
+            random_state = getattr(
+                Config, "SEED", 42
+            )  # Default to 42 if Config.SEED is missing
+
+        self.model = xgb.XGBClassifier(random_state=random_state)
+        self.base_params: Dict[str, Any] = {
+            "random_state": random_state,
+            "objective": "binary:logistic",
+        }
+        self.learnable_params: Dict[str, Dict[str, Any]] = {
+            "max_depth": {"type": "int", "low": 3, "high": 10},
+            "learning_rate": {"type": "loguniform", "low": 0.01, "high": 0.3},
+            "n_estimators": {"type": "int", "low": 50, "high": 300},
+        }
+        self.params: Dict[str, Any] = self.base_params.copy()
+
+    def fit(self, X: np.ndarray, y: np.ndarray) -> None:
+        """
+        Fits the XGBoost model to the training data.
+
+        Args:
+            X (np.ndarray): Feature matrix of shape (n_samples, n_features).
+            y (np.ndarray): Target labels of shape (n_samples,).
+
+        Raises:
+            ValueError: If `X` or `y` is None or empty.
+        """
+        if X is None or y is None or len(X) == 0 or len(y) == 0:
+            raise ValueError("Training data (X, y) cannot be None or empty.")
+
+        self.model.set_params(**self.params)
+        self.model.fit(np.array(X), np.array(y))
+
+
+# data_processor.py
+from typing import Tuple, Optional
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from src.config import Config
+
+
+class DataProcessor:
+    """A class for processing datasets."""
+
+    def __init__(self, random_state: int = Config.SEED):
+        """
+        Initializes the DataProcessor class with default attributes.
+
+        Args:
+            random_state (int, optional): Seed for reproducibility. Defaults to 42.
+        """
+        self.df_dataset: Optional[pd.DataFrame] = None
+        self.target: Optional[str] = None
+        self.random_state: int = random_state
+
+    def initial_train_test_split(
+        self, df_dataset: pd.DataFrame, test_size: float = 0.10
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        Splits the dataset into training and test sets.
+
+        Args:
+            df_dataset (pd.DataFrame): The input dataset.
+            test_size (float, optional): Proportion of the dataset to be used as the test set. Defaults to 0.10.
+
+        Returns:
+            Tuple[pd.DataFrame, pd.DataFrame]: Training and test datasets.
+        """
+        if not self.target:
+            raise ValueError("Target column must be specified before splitting.")
+
+        X = df_dataset.drop(columns=[self.target])
+        y = df_dataset[self.target]
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=self.random_state, stratify=y
+        )
+        # combine X and y
+        df_train = pd.concat([X_train, y_train], axis=1)
+        df_test = pd.concat([X_test, y_test], axis=1)
+
+        return df_train, df_test
+
+    def cut_outliers(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Removes outliers based on quantile thresholds.
+
+        Args:
+            df (pd.DataFrame): The input dataset.
+
+        Returns:
+            pd.DataFrame: The dataset with outliers removed.
+        """
+        threshold = 50 / 500_000  # cut off 50(x2) samples from 500k to handle errors
+
+        for col in df.select_dtypes(include=["number"]).columns:
+            lower_bound = df[col].quantile(threshold)
+            upper_bound = df[col].quantile(1 - threshold)
+            df = df[(df[col] >= lower_bound) & (df[col] <= upper_bound)]
+
+        return df
+
+    def normalize(
+        self,
+        df_train: pd.DataFrame,
+        df_test: pd.DataFrame,
+        num_cols: Optional[list] = None,
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        Normalizes numerical features in the dataset using StandardScaler.
+
+        Args:
+            df_train (pd.DataFrame): Training dataset.
+            df_test (pd.DataFrame): Test dataset.
+
+        Returns:
+            Tuple[pd.DataFrame, pd.DataFrame]: Normalized training and test datasets.
+        """
+        if num_cols is None:
+            num_cols = df_train.select_dtypes(include=["number"]).columns.tolist()
+        if self.target in num_cols:
+            num_cols.remove(self.target)
+
+        scaler = StandardScaler()
+        df_train[num_cols] = scaler.fit_transform(df_train[num_cols].copy())
+        df_test[num_cols] = scaler.transform(df_test[num_cols].copy())
+
+        return df_train, df_test
+
+    def process(
+        self, df_dataset: pd.DataFrame, target: str
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        Processes the dataset by removing outliers, normalizing numerical features, and splitting into train/test sets.
+
+        Args:
+            df_dataset (pd.DataFrame): The dataset to be processed.
+            target (str): The target column for prediction.
+
+        Returns:
+            Tuple[pd.DataFrame, pd.DataFrame]: Processed train and test datasets.
+        """
+        if not target:
+            raise ValueError("Target column must be specified.")
+
+        self.df_dataset = df_dataset.copy()
+        self.target = target
+
+        # Drop ID
+        if "id" in self.df_dataset.columns:
+            self.df_dataset.drop(columns=["id"], inplace=True)
+
+        # Cut off outliers
+        df_dataset = self.cut_outliers(df_dataset)
+
+        # Initial split: dataset → train (80+10%) | test (10%)
+        df_train, df_test = self.initial_train_test_split(
+            self.df_dataset, test_size=0.10
+        )
+
+        # Normalize
+        df_train, df_test = self.normalize(df_train, df_test)
+
+        return df_train, df_test
+
+
+# __init__.py
+from .dataloader import optimize_memory_usage, load_data, save_data
+from .data_processor import DataProcessor
+
+# dataloader.py
+import os
+import time
+import numpy as np
+import pandas as pd
+
+
+def optimize_memory_usage(df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
+    """
+    Optimizes the memory usage of a pandas DataFrame by converting columns to the smallest possible data types.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame to be optimized.
+        verbose (bool, optional): Whether to print memory reduction details. Defaults to True.
+
+    Returns:
+        pd.DataFrame: The optimized DataFrame with reduced memory usage.
+    """
+    initial_mem = df.memory_usage().sum() / 1024**2  # Convert bytes to MB
+
+    for col in df.columns:
+        col_type = df[col].dtype
+
+        # Check for NaN values before computing min and max
+        if df[col].isnull().all():
+            continue
+
+        c_min, c_max = df[col].min(), df[col].max()
+
+        # Convert numeric columns to optimal data types
+        if np.issubdtype(col_type, np.integer):
+            if c_min >= 0:
+                if c_max < np.iinfo(np.uint8).max:
+                    df[col] = df[col].astype(np.uint8)
+                elif c_max < np.iinfo(np.uint16).max:
+                    df[col] = df[col].astype(np.uint16)
+                elif c_max < np.iinfo(np.uint32).max:
+                    df[col] = df[col].astype(np.uint32)
+                else:
+                    df[col] = df[col].astype(np.uint64)
+            else:
+                if c_min > np.iinfo(np.int8).min and c_max < np.iinfo(np.int8).max:
+                    df[col] = df[col].astype(np.int8)
+                elif c_min > np.iinfo(np.int16).min and c_max < np.iinfo(np.int16).max:
+                    df[col] = df[col].astype(np.int16)
+                elif c_min > np.iinfo(np.int32).min and c_max < np.iinfo(np.int32).max:
+                    df[col] = df[col].astype(np.int32)
+                else:
+                    df[col] = df[col].astype(np.int64)
+
+        elif np.issubdtype(col_type, np.floating):
+            if c_min > np.finfo(np.float32).min and c_max < np.finfo(np.float32).max:
+                df[col] = df[col].astype(np.float32)
+            else:
+                df[col] = df[col].astype(np.float64)
+
+        # Convert object columns to categorical where appropriate
+        elif col_type == "object":
+            num_unique_values = df[col].nunique()
+            num_total_values = len(df[col])
+
+            if num_unique_values / num_total_values < 0.5:
+                df[col] = df[col].astype("category")
+
+    optimized_mem = df.memory_usage().sum() / 1024**2  # Convert bytes to MB
+
+    if verbose:
+        print(
+            f"Memory usage: Before={initial_mem:.2f}MB -> After={optimized_mem:.2f}MB, "
+            f"Decreased by {100 * (initial_mem - optimized_mem) / initial_mem:.1f}%"
+        )
+
+    return df
+
+
+def load_data(file_path: str) -> pd.DataFrame:
+    """
+    Loads a pandas DataFrame from a CSV or Parquet file and optimizes its memory usage.
+
+    Args:
+        file_path (str): The path to the data file (CSV or Parquet).
+
+    Returns:
+        pd.DataFrame: The loaded and optimized DataFrame.
+
+    Raises:
+        ValueError: If the file extension is not supported.
+    """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    # Load data
+    if file_path.endswith(".csv"):
+        df = pd.read_csv(file_path)
+    elif file_path.endswith(".parquet"):
+        df = pd.read_parquet(file_path)
+    else:
+        raise ValueError(
+            "Unsupported file format. Please provide a CSV or Parquet file."
+        )
+
+    # Optimize memory usage
+    df_optimized = optimize_memory_usage(df)
+
+    print("Data loaded successfully.")
+    return df_optimized
+
+
+def save_data(
+    df: pd.DataFrame, file_name: str, file_directory: str, file_format: str = "parquet"
+) -> None:
+    """
+    Saves a pandas DataFrame to a CSV or Parquet file with a timestamped filename.
+
+    Args:
+        df (pd.DataFrame): The DataFrame to be saved.
+        file_name (str): The base name of the output file.
+        file_directory (str): The directory where the output file will be saved.
+        file_format (str, optional): The format of the output file (CSV or Parquet). Defaults to "parquet".
+
+    Raises:
+        ValueError: If the file format is not supported.
+    """
+    if not os.path.exists(file_directory):
+        os.makedirs(file_directory, exist_ok=True)
+
+    time_now = time.strftime("%Y%m%d-%H%M")
+    filename = f"{time_now}-{file_name}.{file_format}"
+    filepath = os.path.join(file_directory, filename)
+
+    # Save file
+    if file_format == "parquet":
+        df.to_parquet(filepath, index=False)
+    elif file_format == "csv":
+        df.to_csv(filepath, index=False)
+    else:
+        raise ValueError(f"Unsupported file format: {file_format}")
+
+    print(f"Data saved successfully: {filepath}")
