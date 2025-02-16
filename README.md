@@ -2,12 +2,9 @@
 
 ## Problem Statement
 
-The goal is to develop a robust fraud detection system that can accurately identify fraudulent credit card transactions while ensuring interpretability. The dataset contains over 550,000 transaction records with anonymized features representing transaction characteristics. The challenge includes both detecting fraud and explaining why a transaction was classified as fraudulent.
+The goal is to develop a robust fraud detection system that can accurately identify fraudulent credit card transactions while ensuring interpretability. The dataset contains over 550,000 transaction records with anonymized features representing transaction characteristics.
 
-## Dataset
-
-Source: [Kaggle-Credit Card Fraud Detection Dataset 2023](https://www.kaggle.com/datasets/nelgiriyewithana/credit-card-fraud-detection-dataset-2023)
-This dataset contains credit card transactions made by European cardholders in the year 2023. It comprises over 550,000 records, and the data has been anonymized to protect the cardholders' identities. The primary objective of this dataset is to facilitate the development of fraud detection algorithms and models to identify potentially fraudulent transactions.
+**Dataset**: [Kaggle, Credit Card Fraud Detection Dataset 2023](https://www.kaggle.com/datasets/nelgiriyewithana/credit-card-fraud-detection-dataset-2023)
 
 ## Directory structure
 
@@ -28,6 +25,9 @@ The project is organized as follows:
 ├── reports/
 │   ├── EDA.pdf             # EDA summary report
 │   ├── main.pdf            # Final report
+│   ├── python-code-documentation.pdf
+│   ├── training-class.svg  # Class diagram for training classes
+│   ├── tree.txt
 │   ├── plots/              # Generated plots for analysis
 │   │   ├── Amount-hist.png
 │   │   ├── Class-hist.png
@@ -74,6 +74,7 @@ python -m ipykernel install --user --name=venv --display-name "Python (venv)"
 - **PEP** coding style is followed.
   - **Type hints** are used for function arguments and return types.
   - **Docstrings** are provided for functions and classes.
+  - [Python Code Documentation](./reports/python-code-documentation.md)
 - **PyTorch** file naming convention is used.
 - Attempt to **pipeline** the process (inspired by AutoGluon).
 - **Data Storage**: Data is stored in `.parquet` format for optimal performance and efficient retrieval.
